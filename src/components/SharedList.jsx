@@ -229,9 +229,9 @@ export default function SharedList({
 
             <div className="space-y-3">
                 {members.map((member, i) => (
-                    <div key={i} className="bg-surface-container-lowest p-4 rounded-3xl flex items-center justify-between shadow-sm border border-outline-variant/5">
-                        <div className="flex items-center gap-4">
-                            <div className="relative">
+                    <div key={i} className="bg-surface-container-lowest p-4 rounded-3xl flex items-center justify-between shadow-sm border border-outline-variant/5 gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="relative shrink-0">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm shadow-inner uppercase select-none ${getInitialsStyles(member.name).bg} ${getInitialsStyles(member.name).text}`}>
                                     {member.name.charAt(0)}
                                 </div>
@@ -239,9 +239,9 @@ export default function SharedList({
                                     <span className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full ${member.statusColor}`}></span>
                                 )}
                             </div>
-                            <div>
-                                <p className="font-bold text-on-surface text-sm">{member.name}</p>
-                                <p className={`text-xs ${member.statusColor ? 'text-primary font-bold' : 'text-on-surface-variant'}`}>{member.status}</p>
+                            <div className="min-w-0">
+                                <p className="font-bold text-on-surface text-sm truncate">{member.name}</p>
+                                <p className={`text-xs ${member.statusColor ? 'text-primary font-bold' : 'text-on-surface-variant'} truncate`}>{member.status}</p>
                             </div>
                         </div>
                         {i > 0 ? (
@@ -253,13 +253,13 @@ export default function SharedList({
                                         }
                                     }
                                 }}
-                                className="w-8 h-8 rounded-full flex items-center justify-center text-red-600 hover:bg-red-50 transition-colors active:scale-90"
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-red-600 hover:bg-red-50 transition-colors active:scale-90 shrink-0"
                                 title="Remover Morador"
                             >
                                 <span className="material-symbols-outlined text-lg">delete</span>
                             </button>
                         ) : (
-                            <span className="text-[9px] font-bold text-primary bg-primary-container/40 px-3 py-1 rounded-full uppercase tracking-wider">
+                            <span className="text-[9px] font-bold text-primary bg-primary-container/40 px-3 py-1 rounded-full uppercase tracking-wider shrink-0">
                                 Criador
                             </span>
                         )}

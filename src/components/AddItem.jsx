@@ -34,10 +34,10 @@ export default function AddItem({ onAddItem, categories = [] }) {
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-col gap-1 mb-8">
+            <div className="flex flex-col gap-1 mb-6">
                 <span className="text-on-surface-variant font-label uppercase tracking-widest text-[10px] font-bold">Despensa Rápida</span>
-                <h2 className="text-4xl font-extrabold text-on-surface tracking-tight leading-tight">Adicionar Item<br />Fresco</h2>
-                <p className="text-sm text-on-surface-variant mt-2">Encha sua cesta digital com a colheita do dia.</p>
+                <h2 className="text-3xl sm:text-4xl font-extrabold text-on-surface tracking-tight leading-tight">Adicionar Item Fresco</h2>
+                <p className="text-sm text-on-surface-variant mt-1">Encha sua cesta digital com a colheita do dia.</p>
             </div>
 
             <div className="bg-surface-container-lowest p-6 rounded-[2rem] shadow-sm space-y-6 relative overflow-hidden">

@@ -75,6 +75,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('add');
   const [weather, setWeather] = useState({ city: 'Salvador', temp: 26 });
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // App core states loaded per-user/household
   const [items, setItems] = useState([]);
@@ -154,12 +155,14 @@ export default function App() {
           setCategories(initialData.categories);
           setMembers(initialData.members);
         }
+        setIsLoaded(true);
       } catch (err) {
-        console.error("Erro ao carregar dados do household no Firestore:", err);
+        console.error("Erro no Firestore:", err);
         // Fallback mock to prevent locking
         setItems(defaultItems);
         setCategories(defaultCategories);
         setMembers([{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]);
+        setIsLoaded(true);
       }
     } else {
       // Local storage mode
@@ -180,8 +183,10 @@ export default function App() {
           } else {
             setMembers(currentMembers);
           }
+          setIsLoaded(true);
         } catch (e) {
           console.error("Erro ao carregar dados locais da residência:", e);
+          setIsLoaded(true);
         }
       } else {
         // Initialize local storage household
@@ -194,6 +199,7 @@ export default function App() {
         setItems(initialData.items);
         setCategories(initialData.categories);
         setMembers(initialData.members);
+        setIsLoaded(true);
       }
     }
   };
@@ -241,7 +247,7 @@ export default function App() {
 
           await loadHouseholdData(hId, uName);
         } catch (e) {
-          console.error("Erro ao configurar usuário no Firestore:", e);
+          console.error("Erro no Firestore:", e);
           // Fallback mock to allow access
           setCurrentUser({
             uid: firebaseUser.uid,
@@ -252,11 +258,13 @@ export default function App() {
           setItems(defaultItems);
           setCategories(defaultCategories);
           setMembers([{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]);
+          setIsLoaded(true);
         } finally {
           setIsInitializing(false);
         }
       } else {
         setCurrentUser(null);
+        setIsLoaded(false);
         setIsInitializing(false);
       }
     });
@@ -266,7 +274,7 @@ export default function App() {
 
   // Auto-Save Effect (triggers when database state changes for the current user's household)
   useEffect(() => {
-    if (!currentUser || isInitializing || !currentUser.householdId) return;
+    if (!currentUser || isInitializing || !isLoaded || !currentUser.householdId) return;
 
     const save = async () => {
       if (isFirebaseConfigured) {
@@ -279,7 +287,7 @@ export default function App() {
             members
           }, { merge: true });
         } catch (e) {
-          console.error("Erro ao salvar dados no Firestore:", e);
+          console.error("Erro no Firestore:", e);
         }
       } else {
         // Local storage multi-tenant mode
@@ -293,7 +301,7 @@ export default function App() {
     };
 
     save();
-  }, [items, categories, members, currentUser, isInitializing]);
+  }, [items, categories, members, currentUser, isInitializing, isLoaded]);
 
   // Google Login handler
   const handleGoogleLogin = async () => {
@@ -303,7 +311,6 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
     } catch (e) {
       console.error("Erro ao logar com o Google:", e);
-    } finally {
       setIsInitializing(false);
     }
   };
@@ -348,6 +355,7 @@ export default function App() {
     setItems([]);
     setMembers([]);
     setCategories([]);
+    setIsLoaded(false);
     setActiveTab('add');
     setLocalNameInput('');
   };
@@ -356,6 +364,8 @@ export default function App() {
   const handleJoinHousehold = async (newHouseholdId) => {
     const code = newHouseholdId.trim();
     if (!code || !currentUser) return;
+
+    setIsLoaded(false); // Reset load state during transition
 
     if (isFirebaseConfigured) {
       try {
@@ -369,6 +379,7 @@ export default function App() {
         if (!houseSnap.exists()) {
           alert("Código de residência inválido ou não encontrado!");
           setIsInitializing(false);
+          setIsLoaded(true); // Restore load state
           return;
         }
 
@@ -384,8 +395,9 @@ export default function App() {
         
         alert("Sua conta foi vinculada à nova residência com sucesso!");
       } catch (e) {
-        console.error("Erro ao vincular residência:", e);
+        console.error("Erro no Firestore:", e);
         alert("Erro ao conectar à residência. Tente novamente.");
+        setIsLoaded(true);
       } finally {
         setIsInitializing(false);
       }
@@ -396,6 +408,7 @@ export default function App() {
       
       if (!savedData && !code.startsWith("house_")) {
         alert("Código de residência local inválido!");
+        setIsLoaded(true);
         return;
       }
 
@@ -685,30 +698,30 @@ export default function App() {
         <div className="h-2 w-full bg-gradient-to-r from-primary/40 via-primary to-primary-dim"></div>
 
         {/* Global App Header */}
-        <header className="px-6 pt-8 pb-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center shadow-inner">
-              <span className="material-symbols-outlined text-primary text-2xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
+        <header className="px-4 sm:px-6 pt-6 sm:pt-8 pb-3 sm:pb-4 flex items-center justify-between z-10 border-b border-outline-variant/5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-primary-container flex items-center justify-center shadow-inner shrink-0">
+              <span className="material-symbols-outlined text-primary text-xl sm:text-2xl font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>
                 fact_check
               </span>
             </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-on-surface tracking-tight leading-none">Fiscais da Despensa</h1>
-              <p className="text-[10px] font-bold text-primary tracking-widest uppercase mt-1.5 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                {currentUser.name}
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-extrabold text-on-surface tracking-tight leading-none truncate">Fiscais da Despensa</h1>
+              <p className="text-[9px] sm:text-[10px] font-bold text-primary tracking-widest uppercase mt-1 sm:mt-1.5 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0"></span>
+                <span className="truncate">{currentUser.name}</span>
               </p>
             </div>
           </div>
           
           {/* Header Action Badges */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Weather status Badge */}
-            <div className="bg-surface-container-low px-4 py-2 rounded-full border border-outline-variant/15 flex items-center gap-2 shadow-sm hover:bg-surface-container transition-colors hidden sm:flex">
-              <span className="material-symbols-outlined text-primary text-sm font-semibold" style={{ fontVariationSettings: "'FILL' 1" }}>
+            <div className="bg-surface-container-low px-3 py-2 rounded-full border border-outline-variant/15 flex items-center gap-2 shadow-sm hover:bg-surface-container transition-colors hidden xs:flex">
+              <span className="material-symbols-outlined text-primary text-xs sm:text-sm font-semibold" style={{ fontVariationSettings: "'FILL' 1" }}>
                 wb_sunny
               </span>
-              <span className="text-[10px] font-bold tracking-wide uppercase text-on-surface-variant">{weather.city} • {weather.temp}°C</span>
+              <span className="text-[9px] sm:text-[10px] font-bold tracking-wide uppercase text-on-surface-variant">{weather.city} • {weather.temp}°C</span>
             </div>
 
             {/* Logout Button */}
@@ -723,82 +736,82 @@ export default function App() {
         </header>
 
         {/* Content Area */}
-        <main className="flex-grow px-6 py-4 overflow-y-auto max-h-[calc(100vh-160px)] md:max-h-[calc(85vh-160px)]">
+        <main className="flex-grow px-4 sm:px-6 py-4 overflow-y-auto pb-24 md:pb-6">
           {renderContent()}
         </main>
 
         {/* Premium Bottom Navigation Bar */}
-        <nav className="bg-surface-container/80 backdrop-blur-md border-t border-outline-variant/10 px-4 py-3 flex items-center justify-around z-20 shrink-0">
+        <nav className="bg-surface-container/95 backdrop-blur-md border-t border-outline-variant/10 px-2 py-3 flex items-center justify-around z-40 shrink-0 fixed bottom-0 left-0 right-0 md:static shadow-lg md:shadow-none">
           {/* Add Item Tab */}
           <button
             onClick={() => setActiveTab('add')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
-              activeTab === 'add' ? 'text-primary scale-105 font-bold' : 'text-on-surface-variant hover:text-on-surface'
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
+              activeTab === 'add' ? 'text-primary scale-102 font-bold' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
             {activeTab === 'add' && (
               <span className="absolute inset-0 bg-primary-container/40 rounded-2xl -z-10 animate-in fade-in zoom-in-95 duration-200"></span>
             )}
-            <span className={`material-symbols-outlined text-2xl transition-transform group-hover:scale-110 ${
+            <span className={`material-symbols-outlined text-xl sm:text-2xl transition-transform group-hover:scale-110 ${
               activeTab === 'add' ? 'fill-1' : ''
             }`} style={{ fontVariationSettings: activeTab === 'add' ? "'FILL' 1" : "'FILL' 0" }}>
               add_shopping_cart
             </span>
-            <span className="text-[9px] font-bold tracking-wider uppercase">Adicionar</span>
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-wider uppercase">Adicionar</span>
           </button>
 
           {/* Pantry Tab */}
           <button
             onClick={() => setActiveTab('pantry')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
-              activeTab === 'pantry' ? 'text-primary scale-105 font-bold' : 'text-on-surface-variant hover:text-on-surface'
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
+              activeTab === 'pantry' ? 'text-primary scale-102 font-bold' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
             {activeTab === 'pantry' && (
               <span className="absolute inset-0 bg-primary-container/40 rounded-2xl -z-10 animate-in fade-in zoom-in-95 duration-200"></span>
             )}
-            <span className={`material-symbols-outlined text-2xl transition-transform group-hover:scale-110 ${
+            <span className={`material-symbols-outlined text-xl sm:text-2xl transition-transform group-hover:scale-110 ${
               activeTab === 'pantry' ? 'fill-1' : ''
             }`} style={{ fontVariationSettings: activeTab === 'pantry' ? "'FILL' 1" : "'FILL' 0" }}>
               inventory
             </span>
-            <span className="text-[9px] font-bold tracking-wider uppercase">Despensa</span>
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-wider uppercase">Despensa</span>
           </button>
 
           {/* Categories Tab */}
           <button
             onClick={() => setActiveTab('categories')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
-              activeTab === 'categories' ? 'text-primary scale-105 font-bold' : 'text-on-surface-variant hover:text-on-surface'
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
+              activeTab === 'categories' ? 'text-primary scale-102 font-bold' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
             {activeTab === 'categories' && (
               <span className="absolute inset-0 bg-primary-container/40 rounded-2xl -z-10 animate-in fade-in zoom-in-95 duration-200"></span>
             )}
-            <span className={`material-symbols-outlined text-2xl transition-transform group-hover:scale-110 ${
+            <span className={`material-symbols-outlined text-xl sm:text-2xl transition-transform group-hover:scale-110 ${
               activeTab === 'categories' ? 'fill-1' : ''
             }`} style={{ fontVariationSettings: activeTab === 'categories' ? "'FILL' 1" : "'FILL' 0" }}>
               grid_view
             </span>
-            <span className="text-[9px] font-bold tracking-wider uppercase">Categorias</span>
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-wider uppercase">Categorias</span>
           </button>
 
           {/* Share Tab */}
           <button
             onClick={() => setActiveTab('share')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
-              activeTab === 'share' ? 'text-primary scale-105 font-bold' : 'text-on-surface-variant hover:text-on-surface'
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-2xl transition-all duration-300 relative group shrink-0 ${
+              activeTab === 'share' ? 'text-primary scale-102 font-bold' : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
             {activeTab === 'share' && (
               <span className="absolute inset-0 bg-primary-container/40 rounded-2xl -z-10 animate-in fade-in zoom-in-95 duration-200"></span>
             )}
-            <span className={`material-symbols-outlined text-2xl transition-transform group-hover:scale-110 ${
+            <span className={`material-symbols-outlined text-xl sm:text-2xl transition-transform group-hover:scale-110 ${
               activeTab === 'share' ? 'fill-1' : ''
             }`} style={{ fontVariationSettings: activeTab === 'share' ? "'FILL' 1" : "'FILL' 0" }}>
               group
             </span>
-            <span className="text-[9px] font-bold tracking-wider uppercase">Moradores</span>
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-wider uppercase">Moradores</span>
           </button>
         </nav>
       </div>

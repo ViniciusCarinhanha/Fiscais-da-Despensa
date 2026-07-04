@@ -145,11 +145,11 @@ export default function Categories({
                                     className="bg-surface-container-lowest p-5 rounded-3xl flex flex-col shadow-sm border border-outline-variant/5 hover:border-outline-variant/10 transition-all gap-4 animate-in fade-in duration-200"
                                 >
                                     {/* Top Line Info & Controls */}
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="font-bold text-on-surface text-sm">{item.name}</p>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-on-surface text-sm truncate">{item.name}</p>
                                             {isLow ? (
-                                                <span className="bg-red-50 text-red-600 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-1">
+                                                <span className="bg-red-50 text-red-600 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-1 shrink-0">
                                                     <span className="w-1 h-1 rounded-full bg-red-600 animate-ping"></span>
                                                     Acabando
                                                 </span>
@@ -160,7 +160,7 @@ export default function Categories({
                                             )}
                                         </div>
 
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0 border-t border-outline-variant/5 sm:border-none pt-2 sm:pt-0">
                                             {/* Counter */}
                                             <div className="flex items-center bg-surface-container-low rounded-xl p-1 shadow-inner gap-2">
                                                 <button 
@@ -192,10 +192,10 @@ export default function Categories({
                                     <div className="h-[1px] w-full bg-outline-variant/10"></div>
 
                                     {/* Bottom Line Price & Trends */}
-                                    <div className="flex items-center justify-between text-xs">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                                         {/* Inline Price Editor */}
                                         {editingPriceId === item.id ? (
-                                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center gap-1.5 w-full sm:w-auto" onClick={(e) => e.stopPropagation()}>
                                                 <span className="text-[10px] text-outline font-bold">R$</span>
                                                 <input
                                                     type="text"
@@ -207,19 +207,19 @@ export default function Categories({
                                                         }
                                                     }}
                                                     placeholder="0.00"
-                                                    className="w-16 h-8 px-2 text-xs rounded-xl bg-surface-container-low border border-primary/30 focus:ring-1 focus:ring-primary font-bold text-on-surface text-center outline-none"
+                                                    className="flex-grow sm:flex-grow-0 w-16 h-8 px-2 text-xs rounded-xl bg-surface-container-low border border-primary/30 focus:ring-1 focus:ring-primary font-bold text-on-surface text-center outline-none"
                                                     autoFocus
                                                 />
                                                 <button 
                                                     onClick={() => handleSavePrice(item.id)}
-                                                    className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center hover:bg-primary-dim transition-colors active:scale-90"
+                                                    className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center hover:bg-primary-dim transition-colors active:scale-90 shrink-0"
                                                 >
                                                     <span className="material-symbols-outlined text-sm font-bold">check</span>
                                                 </button>
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-2">
-                                                <div className="bg-surface-container-low px-3 py-1.5 rounded-full flex items-center gap-1.5 border border-outline-variant/10">
+                                                <div className="bg-surface-container-low px-3 py-1.5 rounded-full flex items-center gap-1.5 border border-outline-variant/10 shadow-xs">
                                                     <span className="material-symbols-outlined text-xs text-on-surface-variant" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
                                                     <span className="font-bold text-on-surface-variant">
                                                         {item.price > 0 ? `R$ ${item.price.toFixed(2)}` : 'Sem Preço'}
@@ -236,23 +236,25 @@ export default function Categories({
                                         )}
 
                                         {/* Trend Badges & History Toggle */}
-                                        <div className="flex items-center gap-3">
-                                            {trend === 'up' && (
-                                                <span className="bg-red-50 text-red-600 text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-0.5 border border-red-100">
-                                                    <span className="material-symbols-outlined text-[10px] font-bold">trending_up</span>
-                                                    Mais caro
-                                                </span>
-                                            )}
-                                            {trend === 'down' && (
-                                                <span className="bg-green-50 text-green-700 text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-0.5 border border-green-100">
-                                                    <span className="material-symbols-outlined text-[10px] font-bold">trending_down</span>
-                                                    Mais barato
-                                                </span>
-                                            )}
+                                        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0 border-t border-outline-variant/5 sm:border-none pt-2 sm:pt-0">
+                                            <div className="flex items-center gap-1.5">
+                                                {trend === 'up' && (
+                                                    <span className="bg-red-50 text-red-600 text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-0.5 border border-red-100 shrink-0">
+                                                        <span className="material-symbols-outlined text-[10px] font-bold">trending_up</span>
+                                                        Mais caro
+                                                    </span>
+                                                )}
+                                                {trend === 'down' && (
+                                                    <span className="bg-green-50 text-green-700 text-[9px] font-bold px-2 py-1 rounded-full flex items-center gap-0.5 border border-green-100 shrink-0">
+                                                        <span className="material-symbols-outlined text-[10px] font-bold">trending_down</span>
+                                                        Mais barato
+                                                    </span>
+                                                )}
+                                            </div>
                                             
                                             <button 
                                                 onClick={() => setExpandedHistoryId(expandedHistoryId === item.id ? null : item.id)}
-                                                className="h-8 px-3 rounded-full hover:bg-surface-container-low font-bold text-[10px] text-primary flex items-center gap-1 transition-all active:scale-95 border border-primary/20"
+                                                className="h-8 px-3 rounded-full hover:bg-surface-container-low font-bold text-[10px] text-primary flex items-center gap-1 transition-all active:scale-95 border border-primary/20 shrink-0"
                                             >
                                                 <span className="material-symbols-outlined text-sm font-semibold">
                                                     {expandedHistoryId === item.id ? 'expand_less' : 'show_chart'}
@@ -483,8 +485,8 @@ export default function Categories({
             )}
 
             <div className="flex flex-col gap-1 mb-6">
-                <h2 className="text-4xl font-extrabold text-on-surface tracking-tight leading-tight">Categorias</h2>
-                <p className="text-sm text-on-surface-variant mt-2">Organize seu lar com frescor e facilidade.</p>
+                <h2 className="text-3xl sm:text-4xl font-extrabold text-on-surface tracking-tight leading-tight">Categorias</h2>
+                <p className="text-sm text-on-surface-variant mt-1">Organize seu lar com frescor e facilidade.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
