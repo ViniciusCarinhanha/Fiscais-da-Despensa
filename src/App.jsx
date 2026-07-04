@@ -10,7 +10,8 @@ import {
   db, 
   googleProvider, 
   isFirebaseConfigured, 
-  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult, 
   signOut 
 } from './firebase';
 
@@ -76,7 +77,7 @@ export default function App() {
   const [weather, setWeather] = useState({ city: 'Salvador', temp: 26 });
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // App core states loaded per-user
+  // App core states loaded per-user/household
   const [items, setItems] = useState([]);
   const [members, setMembers] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -120,67 +121,187 @@ export default function App() {
     }
   }, []);
 
-  // Firebase auth state listener
+  // Load Household Data
+  const loadHouseholdData = async (hId, uName) => {
+    if (isFirebaseConfigured) {
+      try {
+        const { doc, getDoc, setDoc } = await import("firebase/firestore");
+        const householdRef = doc(db, "households", hId);
+        const houseSnap = await getDoc(householdRef);
+        
+        if (houseSnap.exists()) {
+          const data = houseSnap.data();
+          setItems(data.items || []);
+          setCategories(data.categories || defaultCategories);
+          
+          // Ensure user is in members list of this household
+          const currentMembers = data.members || [];
+          if (!currentMembers.some(m => m.name.toLowerCase() === uName.toLowerCase())) {
+            const updatedMembers = [...currentMembers, { name: uName, status: 'Online', statusColor: 'bg-green-500' }];
+            setMembers(updatedMembers);
+            await setDoc(householdRef, { members: updatedMembers }, { merge: true });
+          } else {
+            setMembers(currentMembers);
+          }
+        } else {
+          // Initialize household in firestore
+          const initialData = {
+            items: defaultItems,
+            categories: defaultCategories,
+            members: [{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]
+          };
+          await setDoc(householdRef, initialData);
+          setItems(initialData.items);
+          setCategories(initialData.categories);
+          setMembers(initialData.members);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar dados do household no Firestore:", err);
+        // Fallback mock to prevent locking
+        setItems(defaultItems);
+        setCategories(defaultCategories);
+        setMembers([{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]);
+      }
+    } else {
+      // Local storage mode
+      const storageKey = `fiscais_despensa_household_${hId}`;
+      const savedData = localStorage.getItem(storageKey);
+      if (savedData) {
+        try {
+          const data = JSON.parse(savedData);
+          setItems(data.items || []);
+          setCategories(data.categories || defaultCategories);
+          
+          // Ensure user is in members list
+          const currentMembers = data.members || [];
+          if (!currentMembers.some(m => m.name.toLowerCase() === uName.toLowerCase())) {
+            const updatedMembers = [...currentMembers, { name: uName, status: 'Online', statusColor: 'bg-green-500' }];
+            setMembers(updatedMembers);
+            localStorage.setItem(storageKey, JSON.stringify({ ...data, members: updatedMembers }));
+          } else {
+            setMembers(currentMembers);
+          }
+        } catch (e) {
+          console.error("Erro ao carregar dados locais da residência:", e);
+        }
+      } else {
+        // Initialize local storage household
+        const initialData = {
+          items: defaultItems,
+          categories: defaultCategories,
+          members: [{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]
+        };
+        localStorage.setItem(storageKey, JSON.stringify(initialData));
+        setItems(initialData.items);
+        setCategories(initialData.categories);
+        setMembers(initialData.members);
+      }
+    }
+  };
+
+  // Firebase auth state listener and redirect handler
   useEffect(() => {
     if (!isFirebaseConfigured) {
       setIsInitializing(false);
       return;
     }
 
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      if (firebaseUser) {
-        const userObj = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email,
-          email: firebaseUser.email
-        };
-        setCurrentUser(userObj);
+    let isSubscribed = true;
 
-        // Fetch user data from Firestore database
-        try {
-          const { doc, getDoc, setDoc } = await import("firebase/firestore");
-          const userDocRef = doc(db, "users", firebaseUser.uid);
-          const docSnap = await getDoc(userDocRef);
-
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setItems(data.items || []);
-            setCategories(data.categories || defaultCategories);
-            setMembers(data.members || [{ name: userObj.name, status: 'Online', statusColor: 'bg-green-500' }]);
-          } else {
-            // First time login: initialize documents in Firestore
-            const initialData = {
-              items: defaultItems,
-              categories: defaultCategories,
-              members: [{ name: userObj.name, status: 'Online', statusColor: 'bg-green-500' }]
-            };
-            await setDoc(userDocRef, initialData);
-            setItems(initialData.items);
-            setCategories(initialData.categories);
-            setMembers(initialData.members);
-          }
-        } catch (e) {
-          console.error("Erro ao carregar dados do Firestore:", e);
+    const initializeAuth = async () => {
+      try {
+        // 1. First capture Google Sign-In redirect result
+        const result = await getRedirectResult(auth);
+        if (result && result.user && isSubscribed) {
+          console.log("Login via redirect bem-sucedido:", result.user.email);
         }
-      } else {
-        setCurrentUser(null);
+      } catch (redirectError) {
+        console.error("Erro no processamento do redirect do Firebase Auth:", redirectError);
       }
-      setIsInitializing(false);
+
+      // 2. Setup auth state listener
+      const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+        if (!isSubscribed) return;
+
+        if (firebaseUser) {
+          const uName = firebaseUser.displayName || firebaseUser.email.split('@')[0];
+          try {
+            const { doc, getDoc, setDoc } = await import("firebase/firestore");
+            const userDocRef = doc(db, "users", firebaseUser.uid);
+            const docSnap = await getDoc(userDocRef);
+
+            let hId = '';
+
+            if (docSnap.exists()) {
+              const userData = docSnap.data();
+              hId = userData.householdId;
+              if (!hId) {
+                hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
+                await setDoc(userDocRef, { householdId: hId }, { merge: true });
+              }
+            } else {
+              // Create user profile
+              hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
+              await setDoc(userDocRef, {
+                name: uName,
+                email: firebaseUser.email,
+                householdId: hId
+              });
+            }
+
+            setCurrentUser({
+              uid: firebaseUser.uid,
+              name: uName,
+              email: firebaseUser.email,
+              householdId: hId
+            });
+
+            await loadHouseholdData(hId, uName);
+          } catch (e) {
+            console.error("Erro ao configurar usuário no Firestore:", e);
+            // Fallback mock to allow access
+            setCurrentUser({
+              uid: firebaseUser.uid,
+              name: uName,
+              email: firebaseUser.email,
+              householdId: `house_${firebaseUser.uid.substring(0, 8)}`
+            });
+            setItems(defaultItems);
+            setCategories(defaultCategories);
+            setMembers([{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]);
+          } finally {
+            if (isSubscribed) setIsInitializing(false);
+          }
+        } else {
+          setCurrentUser(null);
+          if (isSubscribed) setIsInitializing(false);
+        }
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubFn;
+    initializeAuth().then(unsub => {
+      unsubFn = unsub;
     });
 
-    return () => unsubscribe();
+    return () => {
+      isSubscribed = false;
+      if (unsubFn) unsubFn();
+    };
   }, []);
 
-  // Auto-Save Effect (triggers when database state changes for the current user)
+  // Auto-Save Effect (triggers when database state changes for the current user's household)
   useEffect(() => {
-    if (!currentUser || isInitializing) return;
+    if (!currentUser || isInitializing || !currentUser.householdId) return;
 
     const save = async () => {
       if (isFirebaseConfigured) {
         try {
           const { doc, setDoc } = await import("firebase/firestore");
-          const userDocRef = doc(db, "users", currentUser.uid);
-          await setDoc(userDocRef, {
+          const householdRef = doc(db, "households", currentUser.householdId);
+          await setDoc(householdRef, {
             items,
             categories,
             members
@@ -190,7 +311,7 @@ export default function App() {
         }
       } else {
         // Local storage multi-tenant mode
-        const storageKey = `fiscais_despensa_${currentUser.name.toLowerCase()}`;
+        const storageKey = `fiscais_despensa_household_${currentUser.householdId}`;
         localStorage.setItem(storageKey, JSON.stringify({
           items,
           categories,
@@ -206,9 +327,11 @@ export default function App() {
   const handleGoogleLogin = async () => {
     if (!isFirebaseConfigured) return;
     try {
-      await signInWithPopup(auth, googleProvider);
+      setIsInitializing(true);
+      await signInWithRedirect(auth, googleProvider);
     } catch (e) {
       console.error("Erro ao logar com o Google:", e);
+      setIsInitializing(false);
     }
   };
 
@@ -218,35 +341,23 @@ export default function App() {
     const trimmedName = localNameInput.trim();
     if (!trimmedName) return;
 
-    const userObj = {
-      uid: `local_${trimmedName.toLowerCase()}`,
-      name: trimmedName,
-      email: `${trimmedName.toLowerCase()}@local.com`
-    };
-
-    // Load from LocalStorage or initialize with defaults
-    const storageKey = `fiscais_despensa_${trimmedName.toLowerCase()}`;
-    const savedData = localStorage.getItem(storageKey);
-    if (savedData) {
-      try {
-        const data = JSON.parse(savedData);
-        setItems(data.items || []);
-        setCategories(data.categories || defaultCategories);
-        setMembers(data.members || [{ name: trimmedName, status: 'Online', statusColor: 'bg-green-500' }]);
-      } catch (err) {
-        console.error("Erro ao carregar dados locais do storage:", err);
-        setItems(defaultItems);
-        setCategories(defaultCategories);
-        setMembers([{ name: trimmedName, status: 'Online', statusColor: 'bg-green-500' }]);
-      }
-    } else {
-      // First-time local test login
-      setItems(defaultItems);
-      setCategories(defaultCategories);
-      setMembers([{ name: trimmedName, status: 'Online', statusColor: 'bg-green-500' }]);
+    const uName = trimmedName;
+    const userKey = `fiscais_despensa_user_${trimmedName.toLowerCase()}`;
+    let hId = localStorage.getItem(userKey);
+    
+    if (!hId) {
+      hId = `house_${trimmedName.toLowerCase()}`;
+      localStorage.setItem(userKey, hId);
     }
 
-    setCurrentUser(userObj);
+    setCurrentUser({
+      uid: `local_${trimmedName.toLowerCase()}`,
+      name: uName,
+      email: `${trimmedName.toLowerCase()}@local.com`,
+      householdId: hId
+    });
+
+    loadHouseholdData(hId, uName);
   };
 
   // Logout handler (clears complete react state)
@@ -266,6 +377,65 @@ export default function App() {
     setCategories([]);
     setActiveTab('add');
     setLocalNameInput('');
+  };
+
+  // Join Household Handler
+  const handleJoinHousehold = async (newHouseholdId) => {
+    const code = newHouseholdId.trim();
+    if (!code || !currentUser) return;
+
+    if (isFirebaseConfigured) {
+      try {
+        setIsInitializing(true);
+        const { doc, getDoc, setDoc } = await import("firebase/firestore");
+        
+        // 1. Verify if household exists in Firestore
+        const householdRef = doc(db, "households", code);
+        const houseSnap = await getDoc(householdRef);
+        
+        if (!houseSnap.exists()) {
+          alert("Código de residência inválido ou não encontrado!");
+          setIsInitializing(false);
+          return;
+        }
+
+        // 2. Link user to the new household
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await setDoc(userDocRef, { householdId: code }, { merge: true });
+
+        // 3. Update current user state with new householdId
+        setCurrentUser(prev => ({ ...prev, householdId: code }));
+
+        // 4. Load the data of the new household (which replaces/clears previous values)
+        await loadHouseholdData(code, currentUser.name);
+        
+        alert("Sua conta foi vinculada à nova residência com sucesso!");
+      } catch (e) {
+        console.error("Erro ao vincular residência:", e);
+        alert("Erro ao conectar à residência. Tente novamente.");
+      } finally {
+        setIsInitializing(false);
+      }
+    } else {
+      // Local Storage Mode
+      const storageKey = `fiscais_despensa_household_${code}`;
+      const savedData = localStorage.getItem(storageKey);
+      
+      if (!savedData && !code.startsWith("house_")) {
+        alert("Código de residência local inválido!");
+        return;
+      }
+
+      // Link user to new local householdId
+      const userKey = `fiscais_despensa_user_${currentUser.name.toLowerCase()}`;
+      localStorage.setItem(userKey, code);
+
+      setCurrentUser(prev => ({ ...prev, householdId: code }));
+
+      // Load new local household (clears/overwrites previous state)
+      loadHouseholdData(code, currentUser.name);
+      alert("Vinculação de testes realizada com sucesso!");
+    }
   };
 
   // Add Item Handler
@@ -434,7 +604,15 @@ export default function App() {
           />
         );
       case 'share':
-        return <SharedList members={members} onAddMember={handleAddMember} onRemoveMember={handleRemoveMember} />;
+        return (
+          <SharedList 
+            members={members} 
+            onAddMember={handleAddMember} 
+            onRemoveMember={handleRemoveMember} 
+            householdId={currentUser ? currentUser.householdId : ''}
+            onJoinHousehold={handleJoinHousehold}
+          />
+        );
       default:
         return <AddItem onAddItem={handleAddItem} categories={categories} />;
     }
@@ -457,8 +635,8 @@ export default function App() {
     return (
       <div className="min-h-screen bg-surface-container-low flex flex-col items-center justify-center text-on-surface p-4">
         <div className="w-full max-w-md bg-surface-container-lowest rounded-[3rem] p-8 shadow-2xl border border-outline-variant/10 text-center relative overflow-hidden space-y-8 animate-in fade-in zoom-in-95 duration-500">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-          <div className="absolute bottom-0 left-0 w-36 h-36 bg-primary-container/10 rounded-full blur-2xl translate-y-1/3 -translate-x-1/3"></div>
+          <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-36 h-36 bg-primary-container/10 rounded-full blur-2xl translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
 
           {/* Logo & Brand Header */}
           <div className="flex flex-col items-center gap-3 relative z-10">
