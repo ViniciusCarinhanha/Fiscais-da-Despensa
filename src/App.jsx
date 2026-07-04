@@ -783,6 +783,7 @@ export default function App() {
         return (
           <PantryList 
             items={items} 
+            categories={categories}
             onUpdateQuantity={handleUpdateQuantity} 
             onDeleteItem={handleDeleteItem} 
             onUpdatePrice={handleUpdatePrice} 

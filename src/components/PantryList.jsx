@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function PantryList({ items, onUpdateQuantity, onDeleteItem, onUpdatePrice }) {
+export default function PantryList({ items, categories: customCategories, onUpdateQuantity, onDeleteItem, onUpdatePrice }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Todos');
     
@@ -11,26 +11,34 @@ export default function PantryList({ items, onUpdateQuantity, onDeleteItem, onUp
     // Price history expanded states
     const [expandedHistoryId, setExpandedHistoryId] = useState(null);
 
-    const categories = ['Todos', 'Hortifruti', 'Despensa', 'Frutas', 'Frios', 'Padaria', 'Laticínios'];
+    const defaultCategoriesList = ['Todos', 'Hortifruti', 'Despensa', 'Frutas', 'Frios', 'Padaria', 'Laticínios'];
+    const categoriesList = customCategories 
+        ? ['Todos', ...customCategories.map(c => c.name)]
+        : defaultCategoriesList;
 
     // Category colors helper
-    const getCategoryStyles = (cat) => {
-        switch (cat) {
+    const getCategoryStyles = (catName) => {
+        const found = (customCategories || []).find(c => c.name === catName);
+        if (found) {
+            return { bg: found.color, text: found.iconColor, icon: found.icon || 'inventory_2' };
+        }
+
+        switch (catName) {
             case 'Hortifruti':
             case 'Vegetais':
-                return { bg: 'bg-[#e0f8e0]', text: 'text-[#2f5c00]' };
+                return { bg: 'bg-[#e0f8e0]', text: 'text-[#2f5c00]', icon: 'eco' };
             case 'Frutas':
-                return { bg: 'bg-[#e0f8e0]', text: 'text-[#0a6a1d]' };
+                return { bg: 'bg-[#e0f8e0]', text: 'text-[#0a6a1d]', icon: 'nutrition' };
             case 'Despensa':
-                return { bg: 'bg-[#e9eee5]', text: 'text-[#575e52]' };
+                return { bg: 'bg-[#e9eee5]', text: 'text-[#575e52]', icon: 'inventory_2' };
             case 'Frios':
-                return { bg: 'bg-[#e0f7fb]', text: 'text-[#005861]' };
+                return { bg: 'bg-[#e0f7fb]', text: 'text-[#005861]', icon: 'ac_unit' };
             case 'Padaria':
-                return { bg: 'bg-[#fef3c7]', text: 'text-[#d97706]' };
+                return { bg: 'bg-[#fef3c7]', text: 'text-[#d97706]', icon: 'bakery_dining' };
             case 'Laticínios':
-                return { bg: 'bg-[#e0f2fe]', text: 'text-[#0284c7]' };
+                return { bg: 'bg-[#e0f2fe]', text: 'text-[#0284c7]', icon: 'egg' };
             default:
-                return { bg: 'bg-[#f3f4f6]', text: 'text-[#374151]' };
+                return { bg: 'bg-[#f3f4f6]', text: 'text-[#374151]', icon: 'inventory_2' };
         }
     };
 
@@ -94,7 +102,7 @@ export default function PantryList({ items, onUpdateQuantity, onDeleteItem, onUp
 
             {/* Category Filter Chips */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-6 px-6">
-                {categories.map((cat, i) => {
+                {categoriesList.map((cat, i) => {
                     const isSelected = selectedCategory === cat;
                     return (
                         <button
@@ -141,7 +149,7 @@ export default function PantryList({ items, onUpdateQuantity, onDeleteItem, onUp
                                     <div className="flex items-center gap-3 min-w-0">
                                         <div className={`w-10 h-10 rounded-xl ${styles.bg} flex items-center justify-center shrink-0`}>
                                             <span className={`material-symbols-outlined ${styles.text}`} style={{ fontVariationSettings: "'FILL' 1" }}>
-                                                {item.category === 'Frutas' || item.category === 'Hortifruti' ? 'eco' : 'inventory_2'}
+                                                {styles.icon}
                                             </span>
                                         </div>
                                         <div className="space-y-0.5 min-w-0">
