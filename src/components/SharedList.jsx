@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 
-export default function SharedList({ members, onAddMember, onRemoveMember }) {
+export default function SharedList({ 
+    members, 
+    onAddMember, 
+    onRemoveMember, 
+    householdId, 
+    onJoinHousehold 
+}) {
     const [inventoryUpdates, setInventoryUpdates] = useState(true);
     const [privateList, setPrivateList] = useState(false);
     
@@ -21,6 +27,9 @@ export default function SharedList({ members, onAddMember, onRemoveMember }) {
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [memberNameInput, setMemberNameInput] = useState('');
 
+    const [showJoinModal, setShowJoinModal] = useState(false);
+    const [joinCodeInput, setJoinCodeInput] = useState('');
+
     const handleInviteSubmit = (e) => {
         e.preventDefault();
         if (!memberNameInput.trim()) return;
@@ -30,6 +39,18 @@ export default function SharedList({ members, onAddMember, onRemoveMember }) {
         }
         setMemberNameInput('');
         setShowInviteModal(false);
+    };
+
+    const handleJoinSubmit = (e) => {
+        e.preventDefault();
+        const trimmedCode = joinCodeInput.trim();
+        if (!trimmedCode) return;
+
+        if (onJoinHousehold) {
+            onJoinHousehold(trimmedCode);
+        }
+        setJoinCodeInput('');
+        setShowJoinModal(false);
     };
 
     return (
@@ -42,7 +63,7 @@ export default function SharedList({ members, onAddMember, onRemoveMember }) {
                         className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative overflow-hidden border border-outline-variant/15 animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="absolute top-0 left-0 w-24 h-24 bg-primary/10 rounded-full blur-xl -translate-y-1/2 -translate-x-1/2"></div>
+                        <div className="absolute top-0 left-0 w-24 h-24 bg-primary/10 rounded-full blur-xl -translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
                         
                         <div className="relative z-10 space-y-4">
                             <div className="flex items-center gap-3">
@@ -92,18 +113,110 @@ export default function SharedList({ members, onAddMember, onRemoveMember }) {
                 </div>
             )}
 
-            {/* Top Share Card */}
-            <div className="bg-surface-container-low p-6 rounded-[2rem] shadow-sm space-y-6 mt-2 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-primary-container rounded-full blur-[60px] opacity-40 -translate-y-1/2 translate-x-1/2"></div>
-                <div className="relative z-10">
-                    <h2 className="text-3xl font-extrabold text-on-surface tracking-tight leading-tight">Lista<br />compartilhada</h2>
-                    <p className="text-sm text-on-surface-variant mt-3 leading-relaxed">Compartilhe sua despensa e listas com as pessoas que moram com você.</p>
+            {/* Join Household Modal */}
+            {showJoinModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div 
+                        className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative overflow-hidden border border-outline-variant/15 animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="absolute top-0 left-0 w-24 h-24 bg-primary/10 rounded-full blur-xl -translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
+                        
+                        <div className="relative z-10 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-primary">
+                                    <span className="material-symbols-outlined font-bold">sync_alt</span>
+                                </div>
+                                <h3 className="text-xl font-extrabold text-on-surface">Vincular Residência</h3>
+                            </div>
+                            
+                            <p className="text-xs text-on-surface-variant leading-relaxed">
+                                Insira o código da residência à qual deseja se conectar.
+                            </p>
+                            <p className="text-[10px] text-red-500 font-bold bg-red-50 p-3 rounded-2xl border border-red-100 leading-normal">
+                                ⚠️ Atenção: Seus itens de despensa e moradores padrão criados ao logar pela primeira vez serão completamente limpos e substituídos pelo estoque compartilhado da nova casa.
+                            </p>
+                            
+                            <form onSubmit={handleJoinSubmit} className="space-y-4">
+                                <input
+                                    type="text"
+                                    value={joinCodeInput}
+                                    onChange={(e) => setJoinCodeInput(e.target.value)}
+                                    placeholder="Cole o código aqui (Ex: house_...)"
+                                    required
+                                    autoFocus
+                                    className="w-full h-12 px-4 rounded-xl bg-surface-container-low border border-outline-variant/20 text-on-surface placeholder:text-outline/65 focus:ring-2 focus:ring-primary focus:bg-white transition-all font-mono font-semibold text-center text-xs"
+                                />
+                                
+                                <div className="flex items-center gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowJoinModal(false);
+                                            setJoinCodeInput('');
+                                        }}
+                                        className="flex-1 h-12 rounded-full border border-outline/30 text-on-surface-variant font-bold text-xs hover:bg-surface-container-low transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={!joinCodeInput.trim()}
+                                        className="flex-1 h-12 rounded-full bg-primary disabled:bg-primary/50 text-white font-bold text-xs hover:bg-primary-dim shadow-md shadow-primary/10 transition-colors"
+                                    >
+                                        Vincular
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Household Code Card (Residência Compartilhada) */}
+            <div className="bg-surface-container-low p-6 rounded-[2rem] shadow-sm space-y-4 relative overflow-hidden border border-outline-variant/10 mt-2">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-primary">
+                        <span className="material-symbols-outlined font-bold">home</span>
+                    </div>
+                    <div>
+                        <h3 className="text-base font-extrabold text-on-surface">Residência Compartilhada</h3>
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Código de Acesso da Casa</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-white rounded-xl p-3 shadow-inner border border-outline-variant/15 justify-between">
+                    <code className="text-[11px] font-mono font-bold text-on-surface select-all break-all pr-2">{householdId || 'Carregando...'}</code>
+                    <button 
+                        onClick={() => {
+                            if (householdId) {
+                                navigator.clipboard.writeText(householdId);
+                                alert("Código de acesso copiado com sucesso!");
+                            }
+                        }}
+                        className="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-surface-container flex items-center justify-center text-primary transition-all active:scale-90 shrink-0"
+                        title="Copiar Código"
+                    >
+                        <span className="material-symbols-outlined text-base">content_copy</span>
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
                     <button 
                         onClick={() => setShowInviteModal(true)}
-                        className="h-12 px-6 mt-6 rounded-full bg-primary text-white font-bold text-sm shadow-lg shadow-primary/20 flex items-center justify-center gap-2 hover:bg-primary-dim active:scale-[0.98] transition-all"
+                        className="h-11 rounded-full bg-primary text-white font-bold text-xs shadow-md shadow-primary/10 flex items-center justify-center gap-1.5 hover:bg-primary-dim active:scale-[0.98] transition-all"
                     >
-                        <span className="material-symbols-outlined">person_add</span>
-                        Convidar Morador
+                        <span className="material-symbols-outlined text-base">person_add</span>
+                        Convidar
+                    </button>
+                    <button 
+                        onClick={() => setShowJoinModal(true)}
+                        className="h-11 rounded-full border border-primary/30 text-primary bg-white font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-surface-container-low active:scale-[0.98] transition-all"
+                    >
+                        <span className="material-symbols-outlined text-base">sync_alt</span>
+                        Vincular Casa
                     </button>
                 </div>
             </div>
@@ -131,7 +244,7 @@ export default function SharedList({ members, onAddMember, onRemoveMember }) {
                                 <p className={`text-xs ${member.statusColor ? 'text-primary font-bold' : 'text-on-surface-variant'}`}>{member.status}</p>
                             </div>
                         </div>
-                        {member.name !== 'Vinícius' ? (
+                        {i > 0 ? (
                             <button 
                                 onClick={() => {
                                     if (window.confirm(`Deseja mesmo remover ${member.name} dos moradores da casa?`)) {
@@ -147,7 +260,7 @@ export default function SharedList({ members, onAddMember, onRemoveMember }) {
                             </button>
                         ) : (
                             <span className="text-[9px] font-bold text-primary bg-primary-container/40 px-3 py-1 rounded-full uppercase tracking-wider">
-                                Admin
+                                Criador
                             </span>
                         )}
                     </div>
