@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AddItem from './components/AddItem';
 import PantryList from './components/PantryList';
 import Categories from './components/Categories';
@@ -70,12 +70,22 @@ const defaultItems = [
   }
 ];
 
+const generateHouseholdId = () => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = 'house_';
+  for (let i = 0; i < 16; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('add');
   const [weather, setWeather] = useState({ city: 'Salvador', temp: 26 });
   const [isInitializing, setIsInitializing] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
+  const householdUnsubscribeRef = useRef(null);
 
   // App core states loaded per-user/household
   const [items, setItems] = useState([]);
@@ -123,41 +133,69 @@ export default function App() {
 
   // Load Household Data
   const loadHouseholdData = async (hId, uName) => {
+    // Unsubscribe from previous listener if any
+    if (householdUnsubscribeRef.current) {
+      householdUnsubscribeRef.current();
+      householdUnsubscribeRef.current = null;
+    }
+
     if (isFirebaseConfigured) {
       try {
-        const { doc, getDoc, setDoc } = await import("firebase/firestore");
+        const { doc, setDoc, onSnapshot } = await import("firebase/firestore");
         const householdRef = doc(db, "households", hId);
-        const houseSnap = await getDoc(householdRef);
-        
-        if (houseSnap.exists()) {
-          const data = houseSnap.data();
-          setItems(data.items || []);
-          setCategories(data.categories || defaultCategories);
-          
-          // Ensure user is in members list of this household
-          const currentMembers = data.members || [];
-          if (!currentMembers.some(m => m.name.toLowerCase() === uName.toLowerCase())) {
-            const updatedMembers = [...currentMembers, { name: uName, status: 'Online', statusColor: 'bg-green-500' }];
-            setMembers(updatedMembers);
-            await setDoc(householdRef, { members: updatedMembers }, { merge: true });
+
+        // Setup real-time listener
+        const unsub = onSnapshot(householdRef, async (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            
+            // Only update states if they differ from the snapshot to prevent auto-save loops
+            setItems(prevItems => {
+              const newItems = data.items || [];
+              if (JSON.stringify(prevItems) === JSON.stringify(newItems)) return prevItems;
+              return newItems;
+            });
+            
+            setCategories(prevCategories => {
+              const newCategories = data.categories || defaultCategories;
+              if (JSON.stringify(prevCategories) === JSON.stringify(newCategories)) return prevCategories;
+              return newCategories;
+            });
+
+            // Ensure user is in members list of this household
+            const currentMembers = data.members || [];
+            if (!currentMembers.some(m => m.name.toLowerCase() === uName.toLowerCase())) {
+              const updatedMembers = [...currentMembers, { name: uName, status: 'Online', statusColor: 'bg-green-500' }];
+              setMembers(updatedMembers);
+              await setDoc(householdRef, { members: updatedMembers }, { merge: true });
+            } else {
+              setMembers(prevMembers => {
+                if (JSON.stringify(prevMembers) === JSON.stringify(currentMembers)) return prevMembers;
+                return currentMembers;
+              });
+            }
           } else {
-            setMembers(currentMembers);
+            // Initialize household in firestore
+            const initialData = {
+              name: `Despensa de ${uName}`,
+              items: defaultItems,
+              categories: defaultCategories,
+              members: [{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]
+            };
+            await setDoc(householdRef, initialData);
+            setItems(initialData.items);
+            setCategories(initialData.categories);
+            setMembers(initialData.members);
           }
-        } else {
-          // Initialize household in firestore
-          const initialData = {
-            items: defaultItems,
-            categories: defaultCategories,
-            members: [{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]
-          };
-          await setDoc(householdRef, initialData);
-          setItems(initialData.items);
-          setCategories(initialData.categories);
-          setMembers(initialData.members);
-        }
-        setIsLoaded(true);
+          setIsLoaded(true);
+        }, (err) => {
+          console.error("Erro no Firestore:", err);
+          setIsLoaded(true);
+        });
+
+        householdUnsubscribeRef.current = unsub;
       } catch (err) {
-        console.error("Erro no Firestore:", err);
+        console.error("Erro no Firestore ao configurar onSnapshot:", err);
         // Fallback mock to prevent locking
         setItems(defaultItems);
         setCategories(defaultCategories);
@@ -191,6 +229,7 @@ export default function App() {
       } else {
         // Initialize local storage household
         const initialData = {
+          name: `Despensa de ${uName}`,
           items: defaultItems,
           categories: defaultCategories,
           members: [{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]
@@ -220,21 +259,33 @@ export default function App() {
           const docSnap = await getDoc(userDocRef);
 
           let hId = '';
+          let households = [];
 
           if (docSnap.exists()) {
             const userData = docSnap.data();
-            hId = userData.householdId;
+            hId = userData.activeHouseholdId || userData.householdId;
+            households = userData.households || [];
+
+            // Legacy migration: if user has legacy householdId but no households list
+            if (hId && households.length === 0) {
+              households = [{ id: hId, name: `Despensa de ${uName}` }];
+              await setDoc(userDocRef, { households, activeHouseholdId: hId }, { merge: true });
+            }
+
             if (!hId) {
-              hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
-              await setDoc(userDocRef, { householdId: hId }, { merge: true });
+              hId = generateHouseholdId();
+              households = [{ id: hId, name: `Despensa de ${uName}` }];
+              await setDoc(userDocRef, { households, activeHouseholdId: hId }, { merge: true });
             }
           } else {
             // Create user profile
-            hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
+            hId = generateHouseholdId();
+            households = [{ id: hId, name: `Despensa de ${uName}` }];
             await setDoc(userDocRef, {
               name: uName,
               email: firebaseUser.email,
-              householdId: hId
+              households: households,
+              activeHouseholdId: hId
             });
           }
 
@@ -242,7 +293,8 @@ export default function App() {
             uid: firebaseUser.uid,
             name: uName,
             email: firebaseUser.email,
-            householdId: hId
+            households: households,
+            activeHouseholdId: hId
           });
 
           await loadHouseholdData(hId, uName);
@@ -253,7 +305,8 @@ export default function App() {
             uid: firebaseUser.uid,
             name: uName,
             email: firebaseUser.email,
-            householdId: `house_${firebaseUser.uid.substring(0, 8)}`
+            households: [{ id: `house_${firebaseUser.uid.substring(0, 8)}`, name: `Despensa de ${uName}` }],
+            activeHouseholdId: `house_${firebaseUser.uid.substring(0, 8)}`
           });
           setItems(defaultItems);
           setCategories(defaultCategories);
@@ -269,18 +322,23 @@ export default function App() {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (householdUnsubscribeRef.current) {
+        householdUnsubscribeRef.current();
+      }
+    };
   }, []);
 
   // Auto-Save Effect (triggers when database state changes for the current user's household)
   useEffect(() => {
-    if (!currentUser || isInitializing || !isLoaded || !currentUser.householdId) return;
+    if (!currentUser || isInitializing || !isLoaded || !currentUser.activeHouseholdId) return;
 
     const save = async () => {
       if (isFirebaseConfigured) {
         try {
           const { doc, setDoc } = await import("firebase/firestore");
-          const householdRef = doc(db, "households", currentUser.householdId);
+          const householdRef = doc(db, "households", currentUser.activeHouseholdId);
           await setDoc(householdRef, {
             items,
             categories,
@@ -291,7 +349,7 @@ export default function App() {
         }
       } else {
         // Local storage multi-tenant mode
-        const storageKey = `fiscais_despensa_household_${currentUser.householdId}`;
+        const storageKey = `fiscais_despensa_household_${currentUser.activeHouseholdId}`;
         localStorage.setItem(storageKey, JSON.stringify({
           items,
           categories,
@@ -323,25 +381,45 @@ export default function App() {
 
     const uName = trimmedName;
     const userKey = `fiscais_despensa_user_${trimmedName.toLowerCase()}`;
-    let hId = localStorage.getItem(userKey);
+    const savedProfile = localStorage.getItem(userKey);
     
-    if (!hId) {
-      hId = `house_${trimmedName.toLowerCase()}`;
-      localStorage.setItem(userKey, hId);
+    let profile;
+    if (savedProfile) {
+      try {
+        profile = JSON.parse(savedProfile);
+        // Handle migration if legacy
+        if (profile.householdId && !profile.households) {
+          profile.households = [{ id: profile.householdId, name: `Despensa de ${uName}` }];
+          profile.activeHouseholdId = profile.householdId;
+          delete profile.householdId;
+          localStorage.setItem(userKey, JSON.stringify(profile));
+        }
+      } catch (err) {}
     }
 
-    setCurrentUser({
-      uid: `local_${trimmedName.toLowerCase()}`,
-      name: uName,
-      email: `${trimmedName.toLowerCase()}@local.com`,
-      householdId: hId
-    });
+    if (!profile) {
+      const hId = generateHouseholdId();
+      profile = {
+        uid: `local_${trimmedName.toLowerCase()}`,
+        name: uName,
+        email: `${trimmedName.toLowerCase()}@local.com`,
+        households: [{ id: hId, name: `Despensa de ${uName}` }],
+        activeHouseholdId: hId
+      };
+      localStorage.setItem(userKey, JSON.stringify(profile));
+    }
 
-    loadHouseholdData(hId, uName);
+    setCurrentUser(profile);
+    loadHouseholdData(profile.activeHouseholdId, uName);
   };
 
   // Logout handler (clears complete react state)
   const handleLogout = async () => {
+    if (householdUnsubscribeRef.current) {
+      householdUnsubscribeRef.current();
+      householdUnsubscribeRef.current = null;
+    }
+
     if (isFirebaseConfigured) {
       try {
         await signOut(auth);
@@ -358,6 +436,108 @@ export default function App() {
     setIsLoaded(false);
     setActiveTab('add');
     setLocalNameInput('');
+  };
+
+  // Switch Household Handler
+  const handleSwitchHousehold = async (newHId) => {
+    if (!currentUser) return;
+    setIsInitializing(true);
+    setIsLoaded(false);
+
+    try {
+      setCurrentUser(prev => ({ ...prev, activeHouseholdId: newHId }));
+
+      if (isFirebaseConfigured) {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const userDocRef = doc(db, "users", currentUser.uid);
+        await setDoc(userDocRef, { activeHouseholdId: newHId }, { merge: true });
+      } else {
+        const userKey = `fiscais_despensa_user_${currentUser.name.toLowerCase()}`;
+        const savedProfile = localStorage.getItem(userKey);
+        if (savedProfile) {
+          const profile = JSON.parse(savedProfile);
+          profile.activeHouseholdId = newHId;
+          localStorage.setItem(userKey, JSON.stringify(profile));
+        }
+      }
+
+      await loadHouseholdData(newHId, currentUser.name);
+    } catch (e) {
+      console.error("Erro no Firestore:", e);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
+  // Create Household Handler
+  const handleCreateHousehold = async (houseName) => {
+    if (!currentUser) return;
+    const name = houseName.trim();
+    if (!name) return;
+
+    setIsInitializing(true);
+    setIsLoaded(false);
+
+    try {
+      const newHId = generateHouseholdId();
+      
+      if (isFirebaseConfigured) {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const householdRef = doc(db, "households", newHId);
+        
+        const initialData = {
+          name: name,
+          items: defaultItems,
+          categories: defaultCategories,
+          members: [{ name: currentUser.name, status: 'Online', statusColor: 'bg-green-500' }]
+        };
+        await setDoc(householdRef, initialData);
+
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const updatedHouseholds = [...(currentUser.households || []), { id: newHId, name: name }];
+        await setDoc(userDocRef, {
+          households: updatedHouseholds,
+          activeHouseholdId: newHId
+        }, { merge: true });
+
+        setCurrentUser(prev => ({
+          ...prev,
+          households: updatedHouseholds,
+          activeHouseholdId: newHId
+        }));
+      } else {
+        const storageKey = `fiscais_despensa_household_${newHId}`;
+        const initialData = {
+          name: name,
+          items: defaultItems,
+          categories: defaultCategories,
+          members: [{ name: currentUser.name, status: 'Online', statusColor: 'bg-green-500' }]
+        };
+        localStorage.setItem(storageKey, JSON.stringify(initialData));
+
+        const userKey = `fiscais_despensa_user_${currentUser.name.toLowerCase()}`;
+        const savedProfile = localStorage.getItem(userKey);
+        let updatedHouseholds = [{ id: newHId, name: name }];
+        if (savedProfile) {
+          const profile = JSON.parse(savedProfile);
+          updatedHouseholds = [...(profile.households || []), { id: newHId, name: name }];
+        }
+        
+        const newProfile = {
+          ...currentUser,
+          households: updatedHouseholds,
+          activeHouseholdId: newHId
+        };
+        localStorage.setItem(userKey, JSON.stringify(newProfile));
+        setCurrentUser(newProfile);
+      }
+
+      await loadHouseholdData(newHId, currentUser.name);
+    } catch (e) {
+      console.error("Erro no Firestore:", e);
+    } finally {
+      setIsInitializing(false);
+    }
   };
 
   // Join Household Handler
@@ -383,14 +563,30 @@ export default function App() {
           return;
         }
 
+        const houseData = houseSnap.data();
+        const houseName = houseData.name || `Despensa ${code.substring(0, 8)}`;
+
         // 2. Link user to the new household
         const userDocRef = doc(db, "users", currentUser.uid);
-        await setDoc(userDocRef, { householdId: code }, { merge: true });
+        const currentHouseholds = currentUser.households || [];
+        let updatedHouseholds = [...currentHouseholds];
+        if (!updatedHouseholds.some(h => h.id === code)) {
+          updatedHouseholds.push({ id: code, name: houseName });
+        }
 
-        // 3. Update current user state with new householdId
-        setCurrentUser(prev => ({ ...prev, householdId: code }));
+        await setDoc(userDocRef, {
+          households: updatedHouseholds,
+          activeHouseholdId: code
+        }, { merge: true });
 
-        // 4. Load the data of the new household (which replaces/clears previous values)
+        // 3. Update current user state with new householdId and array
+        setCurrentUser(prev => ({
+          ...prev,
+          households: updatedHouseholds,
+          activeHouseholdId: code
+        }));
+
+        // 4. Load the data of the new household
         await loadHouseholdData(code, currentUser.name);
         
         alert("Sua conta foi vinculada à nova residência com sucesso!");
@@ -412,13 +608,29 @@ export default function App() {
         return;
       }
 
-      // Link user to new local householdId
+      let houseName = `Despensa ${code.substring(0, 8)}`;
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          houseName = parsed.name || houseName;
+        } catch (err) {}
+      }
+
       const userKey = `fiscais_despensa_user_${currentUser.name.toLowerCase()}`;
-      localStorage.setItem(userKey, code);
+      const currentHouseholds = currentUser.households || [];
+      let updatedHouseholds = [...currentHouseholds];
+      if (!updatedHouseholds.some(h => h.id === code)) {
+        updatedHouseholds.push({ id: code, name: houseName });
+      }
 
-      setCurrentUser(prev => ({ ...prev, householdId: code }));
+      const newProfile = {
+        ...currentUser,
+        households: updatedHouseholds,
+        activeHouseholdId: code
+      };
+      localStorage.setItem(userKey, JSON.stringify(newProfile));
+      setCurrentUser(newProfile);
 
-      // Load new local household (clears/overwrites previous state)
       loadHouseholdData(code, currentUser.name);
       alert("Vinculação de testes realizada com sucesso!");
     }
@@ -595,8 +807,9 @@ export default function App() {
             members={members} 
             onAddMember={handleAddMember} 
             onRemoveMember={handleRemoveMember} 
-            householdId={currentUser ? currentUser.householdId : ''}
+            householdId={currentUser ? currentUser.activeHouseholdId : ''}
             onJoinHousehold={handleJoinHousehold}
+            onCreateHousehold={handleCreateHousehold}
           />
         );
       default:
@@ -716,6 +929,22 @@ export default function App() {
           
           {/* Header Action Badges */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* List Selector Dropdown */}
+            {currentUser && currentUser.households && currentUser.households.length > 0 && (
+              <div className="relative shrink-0">
+                <select
+                  value={currentUser.activeHouseholdId}
+                  onChange={(e) => handleSwitchHousehold(e.target.value)}
+                  className="h-9 pl-3 pr-8 rounded-full bg-surface-container-low border border-outline-variant/15 text-[10px] sm:text-xs font-bold text-on-surface focus:ring-2 focus:ring-primary appearance-none transition-all shadow-sm max-w-[120px] sm:max-w-[160px] truncate outline-none cursor-pointer"
+                >
+                  {currentUser.households.map((h) => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </select>
+                <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-outline-variant text-sm pointer-events-none">expand_more</span>
+              </div>
+            )}
+
             {/* Weather status Badge */}
             <div className="bg-surface-container-low px-3 py-2 rounded-full border border-outline-variant/15 flex items-center gap-2 shadow-sm hover:bg-surface-container transition-colors hidden xs:flex">
               <span className="material-symbols-outlined text-primary text-xs sm:text-sm font-semibold" style={{ fontVariationSettings: "'FILL' 1" }}>

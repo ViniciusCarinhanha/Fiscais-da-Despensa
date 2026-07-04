@@ -5,7 +5,8 @@ export default function SharedList({
     onAddMember, 
     onRemoveMember, 
     householdId, 
-    onJoinHousehold 
+    onJoinHousehold,
+    onCreateHousehold
 }) {
     const [inventoryUpdates, setInventoryUpdates] = useState(true);
     const [privateList, setPrivateList] = useState(false);
@@ -29,6 +30,21 @@ export default function SharedList({
 
     const [showJoinModal, setShowJoinModal] = useState(false);
     const [joinCodeInput, setJoinCodeInput] = useState('');
+
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createNameInput, setCreateNameInput] = useState('');
+
+    const handleCreateSubmit = (e) => {
+        e.preventDefault();
+        const trimmedName = createNameInput.trim();
+        if (!trimmedName) return;
+
+        if (onCreateHousehold) {
+            onCreateHousehold(trimmedName);
+        }
+        setCreateNameInput('');
+        setShowCreateModal(false);
+    };
 
     const handleInviteSubmit = (e) => {
         e.preventDefault();
@@ -173,6 +189,63 @@ export default function SharedList({
                 </div>
             )}
 
+            {/* Create Household Modal */}
+            {showCreateModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div 
+                        className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative overflow-hidden border border-outline-variant/15 animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="absolute top-0 left-0 w-24 h-24 bg-primary/10 rounded-full blur-xl -translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
+                        
+                        <div className="relative z-10 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-primary">
+                                    <span className="material-symbols-outlined font-bold">add_home</span>
+                                </div>
+                                <h3 className="text-xl font-extrabold text-on-surface">Criar Nova Despensa</h3>
+                            </div>
+                            
+                            <p className="text-xs text-on-surface-variant leading-relaxed">
+                                Crie uma despensa independente com seu próprio estoque de itens, categorias e moradores.
+                            </p>
+                            
+                            <form onSubmit={handleCreateSubmit} className="space-y-4">
+                                <input
+                                    type="text"
+                                    value={createNameInput}
+                                    onChange={(e) => setCreateNameInput(e.target.value)}
+                                    placeholder="Ex: Minha Casa, Casa de Praia, Evento..."
+                                    required
+                                    autoFocus
+                                    className="w-full h-12 px-4 rounded-xl bg-surface-container-low border border-outline-variant/20 text-on-surface placeholder:text-outline/65 focus:ring-2 focus:ring-primary focus:bg-white transition-all font-semibold text-sm"
+                                />
+                                
+                                <div className="flex items-center gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowCreateModal(false);
+                                            setCreateNameInput('');
+                                        }}
+                                        className="flex-1 h-12 rounded-full border border-outline/30 text-on-surface-variant font-bold text-xs hover:bg-surface-container-low transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={!createNameInput.trim()}
+                                        className="flex-1 h-12 rounded-full bg-primary disabled:bg-primary/50 text-white font-bold text-xs hover:bg-primary-dim shadow-md shadow-primary/10 transition-colors"
+                                    >
+                                        Criar Lista
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Household Code Card (Residência Compartilhada) */}
             <div className="bg-surface-container-low p-6 rounded-[2rem] shadow-sm space-y-4 relative overflow-hidden border border-outline-variant/10 mt-2">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
@@ -217,6 +290,16 @@ export default function SharedList({
                     >
                         <span className="material-symbols-outlined text-base">sync_alt</span>
                         Vincular Casa
+                    </button>
+                </div>
+
+                <div className="pt-2 border-t border-outline-variant/5">
+                    <button 
+                        onClick={() => setShowCreateModal(true)}
+                        className="w-full h-11 rounded-full border border-dashed border-primary text-primary bg-primary-container/10 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-primary-container/20 active:scale-[0.98] transition-all"
+                    >
+                        <span className="material-symbols-outlined text-base">add_home</span>
+                        Criar Nova Lista/Residência
                     </button>
                 </div>
             </div>
