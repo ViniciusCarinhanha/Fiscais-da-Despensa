@@ -10,8 +10,7 @@ import {
   db, 
   googleProvider, 
   isFirebaseConfigured, 
-  signInWithRedirect, 
-  getRedirectResult, 
+  signInWithPopup, 
   signOut 
 } from './firebase';
 
@@ -199,97 +198,70 @@ export default function App() {
     }
   };
 
-  // Firebase auth state listener and redirect handler
+  // Firebase auth state listener
   useEffect(() => {
     if (!isFirebaseConfigured) {
       setIsInitializing(false);
       return;
     }
 
-    let isSubscribed = true;
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        const uName = firebaseUser.displayName || firebaseUser.email.split('@')[0];
+        try {
+          const { doc, getDoc, setDoc } = await import("firebase/firestore");
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const docSnap = await getDoc(userDocRef);
 
-    const initializeAuth = async () => {
-      try {
-        // 1. First capture Google Sign-In redirect result
-        const result = await getRedirectResult(auth);
-        if (result && result.user && isSubscribed) {
-          console.log("Login via redirect bem-sucedido:", result.user.email);
-        }
-      } catch (redirectError) {
-        console.error("Erro no processamento do redirect do Firebase Auth:", redirectError);
-      }
+          let hId = '';
 
-      // 2. Setup auth state listener
-      const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-        if (!isSubscribed) return;
-
-        if (firebaseUser) {
-          const uName = firebaseUser.displayName || firebaseUser.email.split('@')[0];
-          try {
-            const { doc, getDoc, setDoc } = await import("firebase/firestore");
-            const userDocRef = doc(db, "users", firebaseUser.uid);
-            const docSnap = await getDoc(userDocRef);
-
-            let hId = '';
-
-            if (docSnap.exists()) {
-              const userData = docSnap.data();
-              hId = userData.householdId;
-              if (!hId) {
-                hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
-                await setDoc(userDocRef, { householdId: hId }, { merge: true });
-              }
-            } else {
-              // Create user profile
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            hId = userData.householdId;
+            if (!hId) {
               hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
-              await setDoc(userDocRef, {
-                name: uName,
-                email: firebaseUser.email,
-                householdId: hId
-              });
+              await setDoc(userDocRef, { householdId: hId }, { merge: true });
             }
-
-            setCurrentUser({
-              uid: firebaseUser.uid,
+          } else {
+            // Create user profile
+            hId = `house_${firebaseUser.uid.substring(0, 8)}_${Math.floor(Math.random() * 1000)}`;
+            await setDoc(userDocRef, {
               name: uName,
               email: firebaseUser.email,
               householdId: hId
             });
-
-            await loadHouseholdData(hId, uName);
-          } catch (e) {
-            console.error("Erro ao configurar usuário no Firestore:", e);
-            // Fallback mock to allow access
-            setCurrentUser({
-              uid: firebaseUser.uid,
-              name: uName,
-              email: firebaseUser.email,
-              householdId: `house_${firebaseUser.uid.substring(0, 8)}`
-            });
-            setItems(defaultItems);
-            setCategories(defaultCategories);
-            setMembers([{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]);
-          } finally {
-            if (isSubscribed) setIsInitializing(false);
           }
-        } else {
-          setCurrentUser(null);
-          if (isSubscribed) setIsInitializing(false);
+
+          setCurrentUser({
+            uid: firebaseUser.uid,
+            name: uName,
+            email: firebaseUser.email,
+            householdId: hId
+          });
+
+          await loadHouseholdData(hId, uName);
+        } catch (e) {
+          console.error("Erro ao configurar usuário no Firestore:", e);
+          // Fallback mock to allow access
+          setCurrentUser({
+            uid: firebaseUser.uid,
+            name: uName,
+            email: firebaseUser.email,
+            householdId: `house_${firebaseUser.uid.substring(0, 8)}`
+          });
+          setItems(defaultItems);
+          setCategories(defaultCategories);
+          setMembers([{ name: uName, status: 'Online', statusColor: 'bg-green-500' }]);
+        } finally {
+          setIsInitializing(false);
         }
-      });
-
-      return unsubscribe;
-    };
-
-    let unsubFn;
-    initializeAuth().then(unsub => {
-      unsubFn = unsub;
+      } else {
+        setCurrentUser(null);
+        setIsInitializing(false);
+      }
     });
 
-    return () => {
-      isSubscribed = false;
-      if (unsubFn) unsubFn();
-    };
+    return () => unsubscribe();
   }, []);
 
   // Auto-Save Effect (triggers when database state changes for the current user's household)
@@ -328,9 +300,10 @@ export default function App() {
     if (!isFirebaseConfigured) return;
     try {
       setIsInitializing(true);
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
     } catch (e) {
       console.error("Erro ao logar com o Google:", e);
+    } finally {
       setIsInitializing(false);
     }
   };
